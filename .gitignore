@@ -392,6 +392,7 @@ FodyWeavers.xsd
 /out
 /build
 
-# Python
-.env
-venv
+# Agent testing
+agent/.env
+agent/venv
+agent/screenshots

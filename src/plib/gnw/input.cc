@@ -3,6 +3,7 @@
 #include <limits.h>
 #include <stdio.h>
 
+#include "agent/agent_ipc.h"
 #include "audio_engine.h"
 #include "platform_compat.h"
 #include "plib/color/color.h"
@@ -1127,8 +1128,11 @@ void GNW95_process_message()
                 audioEngineResume();
                 break;
             case SDL_WINDOWEVENT_FOCUS_LOST:
-                GNW95_isActive = false;
-                audioEnginePause();
+                // Keep the game running in the background so we can use the Python console
+                if (!agent_ipc_connected()) {
+                    GNW95_isActive = false;
+                    audioEnginePause();
+                }
                 break;
             }
             break;

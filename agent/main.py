@@ -3,10 +3,12 @@ import argparse
 
 from agent import Agent
 from ipc import GameIPC
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
+SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Plays Fallout")
@@ -33,6 +35,9 @@ def main():
     ipc = GameIPC()
     ipc.connect(args.host, args.port)
 
+    SCREENSHOTS_DIR.mkdir(exist_ok=True)
+    screenshot_counter = 0
+
     while True:
         try:
             cmd = input("> ").strip()
@@ -42,7 +47,12 @@ def main():
             logger.info("Executing next step")
             ipc.send_msg("next")
 
+            img = ipc.recv_screenshot()
 
+            screenshot_counter += 1
+            path = SCREENSHOTS_DIR / f"screen_{screenshot_counter:03d}.png"
+            img.save(path)
+            logger.info("Saved screenshot: %s", path)
 
 if __name__ == "__main__":
     main()

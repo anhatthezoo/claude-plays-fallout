@@ -1,16 +1,26 @@
 #include "agent/agent_ipc.h"
 
+#include <cstring>
+#include <algorithm>
 #include <SDL_net.h>
-#include "plib/gnw/debug.h"
+
 #include "game/gconfig.h"
+#include "plib/gnw/memory.h"
+#include "plib/gnw/debug.h"
+#include "plib/gnw/svga.h"
 
 namespace fallout {
+
+#define DATA_BUFFER_SIZE 1024
+static int gScreenshotSize;
+static unsigned char* gScreenshotBuf = nullptr;
 
 static SDLNet_SocketSet gICPSocketSet = nullptr;
 static TCPsocket gAgentServer = nullptr; 
 static TCPsocket gAgentClient = nullptr;
 
-bool agent_ipc_init() {
+bool agent_ipc_init() 
+{
     debug_printf(">agent_ipc_init\t");
 
     if (SDLNet_Init() < 0) {
@@ -47,6 +57,9 @@ bool agent_ipc_init() {
             if (gAgentClient) {
                 debug_printf("Agent process connected successfully.\n");
                 SDLNet_TCP_AddSocket(gICPSocketSet, gAgentClient);
+
+                gScreenshotSize = (sizeof(uint16_t) * 2) + (screenGetWidth() * screenGetHeight() * 4);
+                gScreenshotBuf = (unsigned char*)mem_malloc(gScreenshotSize);
             } else {
                 debug_printf("Failed to accept agent connection: %s\n", SDLNet_GetError());
                 agent_ipc_shutdown();
@@ -62,11 +75,19 @@ bool agent_ipc_init() {
     return true;
 }
 
-void agent_ipc_shutdown() {
+void agent_ipc_shutdown() 
+{
+    debug_printf(">agent_ipc_shutdown\t");
+
     if (gAgentClient) SDLNet_TCP_Close(gAgentClient);
     SDLNet_TCP_Close(gAgentServer);
     SDLNet_FreeSocketSet(gICPSocketSet);
     SDLNet_Quit();
+
+    if (gScreenshotBuf) {
+        mem_free(gScreenshotBuf);
+        gScreenshotBuf = nullptr;
+    }
 
     gICPSocketSet = nullptr;
     gAgentServer = nullptr;
@@ -75,7 +96,62 @@ void agent_ipc_shutdown() {
     return;
 }
 
-void agent_ipc_poll() {
+bool agent_ipc_send(uint8_t type, const unsigned char* data, uint32_t length)
+{
+    if (!agent_ipc_connected()) {
+        return false;
+    }
+
+    unsigned char header[5];
+    header[0] = type;
+    SDLNet_Write32(length, header + 1);
+
+    if (SDLNet_TCP_Send(gAgentClient, header, sizeof(header)) < sizeof(header)) {
+        debug_printf("Failed to send message header\n");
+        return false;
+    }
+
+    uint32_t sent = 0;
+    while (sent < length) {
+        int to_send = std::min(static_cast<int>(length - sent), DATA_BUFFER_SIZE);
+        if (SDLNet_TCP_Send(gAgentClient, data + sent, to_send) < to_send) {
+            debug_printf("Failed to send message chunk at offset %u\n", sent);
+            return false;
+        }
+        sent += to_send;
+    }
+
+    debug_printf("Sent message of %u byte(s) to agent\t", length);
+
+    return true;
+}
+
+bool agent_ipc_send_screenshot()
+{
+    if (gSdlRenderer == nullptr) {
+        debug_printf("No renderer available for sending screenshot\n");
+        return false;
+    };
+
+    if (SDL_RenderReadPixels(
+        gSdlRenderer, 
+        NULL, 
+        SDL_PIXELFORMAT_RGB888, 
+        gScreenshotBuf + (sizeof(uint16_t) * 2), 
+        gSdlTextureSurface->pitch) < 0) {
+
+        debug_printf("Failed to read pixels from renderer: %s\n", SDL_GetError());
+        return false;
+    }
+
+    SDLNet_Write16(screenGetWidth(), gScreenshotBuf);
+    SDLNet_Write16(screenGetHeight(), gScreenshotBuf + sizeof(uint16_t));
+
+    return agent_ipc_send(MSG_SCREENSHOT, gScreenshotBuf, gScreenshotSize);
+}
+
+void agent_ipc_poll()
+{
     if (!agent_ipc_connected()) {
         return;
     }
@@ -85,13 +161,17 @@ void agent_ipc_poll() {
         return;
     }
 
-    char buf[1024];
+    char buf[DATA_BUFFER_SIZE];
 
     if (gAgentClient && SDLNet_SocketReady(gAgentClient)) {
         int len = SDLNet_TCP_Recv(gAgentClient, buf, sizeof(buf) - 1);
         if (len > 0) {
             buf[len] = '\0';
             debug_printf("Received IPC message from agent: %s\n", buf);
+
+            if (strcmp(buf, "next") == 0) {
+                agent_ipc_send_screenshot();
+            }
         } else {
             debug_printf("Agent disconnected\n");
             agent_ipc_shutdown();
@@ -99,7 +179,8 @@ void agent_ipc_poll() {
     }
 }
 
-bool agent_ipc_connected() {
+bool agent_ipc_connected() 
+{
     return gAgentClient != nullptr;
 }
 
