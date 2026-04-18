@@ -1164,6 +1164,8 @@ void GNW95_process_message()
             }
         }
     }
+
+    agent_ipc_poll();
 }
 
 // 0x4B4638
@@ -1204,6 +1206,21 @@ static void GNW95_process_key(KeyboardData* data)
 
         kb_simulate_key(data);
     }
+}
+
+void agent_process_key(KeyboardData* data)
+{
+    GNW95_process_key(data);
+}
+
+void agent_simulate_key(int scancode)
+{
+    KeyboardData keyboardData;
+    keyboardData.key = scancode;
+    keyboardData.down = true;
+    GNW95_process_key(&keyboardData);
+    keyboardData.down = false;
+    GNW95_process_key(&keyboardData);
 }
 
 // 0x4B4734

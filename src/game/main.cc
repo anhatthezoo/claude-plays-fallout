@@ -323,7 +323,7 @@ static void main_game_loop()
     while (game_user_wants_to_quit == 0) {
         sharedFpsLimiter.mark();
 
-        agent_ipc_poll();
+        //agent_ipc_poll();
 
         int keyCode = get_input();
         game_handle_input(keyCode, false);

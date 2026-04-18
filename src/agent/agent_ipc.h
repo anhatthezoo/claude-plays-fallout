@@ -5,8 +5,25 @@
 
 namespace fallout {
 
+#define DATA_BUFFER_SIZE 1024
+
 enum AgentMessageType : uint8_t {
-    MSG_SCREENSHOT = 0x1,
+    MSG_GENERAL = 0x00,
+    MSG_SCREENSHOT = 0x01,
+    MSG_PLAYER_STATE = 0x02,
+    MSG_RESPONSE_END = 0x03,
+
+    MSG_NAVIGATE = 0x10,
+    MSG_COMBAT = 0x11,
+    MSG_INVENTORY = 0x12,
+    MSG_BARTER = 0x13,
+    MSG_DIALOGUE = 0x14,
+    MSG_INTERACT = 0x15,
+    MSG_ITEM = 0x16,
+    MSG_LOOT = 0x17,
+    MSG_PIPBOY = 0x18,
+    MSG_LEFT_CLICK = 0x19,
+    MSG_REQ_STATE = 0x1A,
 };
 
 // Initialize the agent IPC: starts a TCP server on localhost and waits up
@@ -19,7 +36,7 @@ bool agent_ipc_init();
 void agent_ipc_shutdown();
 
 // Check (non-blocking) whether the Python agent has sent a request.
-// Call once per game frame.
+// Registered as a background process so it runs from get_input().
 void agent_ipc_poll();
 
 // Returns true if the Python agent is currently connected.

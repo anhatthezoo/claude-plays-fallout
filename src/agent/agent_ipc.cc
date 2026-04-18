@@ -1,4 +1,5 @@
 #include "agent/agent_ipc.h"
+#include "agent/agent_commands.h"
 
 #include <cstring>
 #include <algorithm>
@@ -7,19 +8,16 @@
 #include "game/gconfig.h"
 #include "plib/gnw/memory.h"
 #include "plib/gnw/debug.h"
+#include "plib/gnw/input.h"
 #include "plib/gnw/svga.h"
 
 namespace fallout {
 
-#define DATA_BUFFER_SIZE 1024
-static int gScreenshotSize;
-static unsigned char* gScreenshotBuf = nullptr;
+static SDLNet_SocketSet ICPSocketSet = nullptr;
+static TCPsocket agentServer = nullptr;
+static TCPsocket agentClient = nullptr;
 
-static SDLNet_SocketSet gICPSocketSet = nullptr;
-static TCPsocket gAgentServer = nullptr; 
-static TCPsocket gAgentClient = nullptr;
-
-bool agent_ipc_init() 
+bool agent_ipc_init()
 {
     debug_printf(">agent_ipc_init\t");
 
@@ -34,8 +32,8 @@ bool agent_ipc_init()
     IPaddress ip;
     SDLNet_ResolveHost(&ip, nullptr, port);
 
-    gAgentServer = SDLNet_TCP_Open(&ip);
-    if (!gAgentServer) {
+    agentServer = SDLNet_TCP_Open(&ip);
+    if (!agentServer) {
         debug_printf("Failed to open TCP server socket: %s\n", SDLNet_GetError());
         SDLNet_Quit();
         return false;
@@ -43,23 +41,22 @@ bool agent_ipc_init()
 
     debug_printf("Listening for agent connection on port %d...\n", SDLNet_Read16(&ip.port));
 
-    gICPSocketSet = SDLNet_AllocSocketSet(2);
-    SDLNet_TCP_AddSocket(gICPSocketSet, gAgentServer);
+    ICPSocketSet = SDLNet_AllocSocketSet(2);
+    SDLNet_TCP_AddSocket(ICPSocketSet, agentServer);
 
     int timeout = -1;
     config_get_value(&game_config, GAME_CONFIG_AGENT_KEY, GAME_CONFIG_AGENT_START_TIMEOUT_KEY, &timeout);
 
-    int ready = SDLNet_CheckSockets(gICPSocketSet, timeout);
+    int ready = SDLNet_CheckSockets(ICPSocketSet, timeout);
 
     if (ready > 0) {
-        if (SDLNet_SocketReady(gAgentServer)) {
-            gAgentClient = SDLNet_TCP_Accept(gAgentServer);
-            if (gAgentClient) {
+        if (SDLNet_SocketReady(agentServer)) {
+            agentClient = SDLNet_TCP_Accept(agentServer);
+            if (agentClient) {
                 debug_printf("Agent process connected successfully.\n");
-                SDLNet_TCP_AddSocket(gICPSocketSet, gAgentClient);
+                SDLNet_TCP_AddSocket(ICPSocketSet, agentClient);
 
-                gScreenshotSize = (sizeof(uint16_t) * 2) + (screenGetWidth() * screenGetHeight() * 4);
-                gScreenshotBuf = (unsigned char*)mem_malloc(gScreenshotSize);
+                agent_commands_init();
             } else {
                 debug_printf("Failed to accept agent connection: %s\n", SDLNet_GetError());
                 agent_ipc_shutdown();
@@ -79,19 +76,16 @@ void agent_ipc_shutdown()
 {
     debug_printf(">agent_ipc_shutdown\t");
 
-    if (gAgentClient) SDLNet_TCP_Close(gAgentClient);
-    SDLNet_TCP_Close(gAgentServer);
-    SDLNet_FreeSocketSet(gICPSocketSet);
+    if (agentClient) SDLNet_TCP_Close(agentClient);
+    SDLNet_TCP_Close(agentServer);
+    SDLNet_FreeSocketSet(ICPSocketSet);
     SDLNet_Quit();
 
-    if (gScreenshotBuf) {
-        mem_free(gScreenshotBuf);
-        gScreenshotBuf = nullptr;
-    }
+    agent_commands_shutdown();
 
-    gICPSocketSet = nullptr;
-    gAgentServer = nullptr;
-    gAgentClient = nullptr;
+    ICPSocketSet = nullptr;
+    agentServer = nullptr;
+    agentClient = nullptr;
 
     return;
 }
@@ -106,16 +100,19 @@ bool agent_ipc_send(uint8_t type, const unsigned char* data, uint32_t length)
     header[0] = type;
     SDLNet_Write32(length, header + 1);
 
-    if (SDLNet_TCP_Send(gAgentClient, header, sizeof(header)) < sizeof(header)) {
-        debug_printf("Failed to send message header\n");
+    if (SDLNet_TCP_Send(agentClient, header, sizeof(header)) < (int)sizeof(header)) {
+        debug_printf("Failed to send message header, disconnecting agent\n");
+        agent_ipc_shutdown();
         return false;
     }
 
     uint32_t sent = 0;
     while (sent < length) {
         int to_send = std::min(static_cast<int>(length - sent), DATA_BUFFER_SIZE);
-        if (SDLNet_TCP_Send(gAgentClient, data + sent, to_send) < to_send) {
-            debug_printf("Failed to send message chunk at offset %u\n", sent);
+        int result = SDLNet_TCP_Send(agentClient, data + sent, to_send);
+        if (result < to_send) {
+            debug_printf("Failed to send message chunk at offset %u, disconnecting agent\n", sent);
+            agent_ipc_shutdown();
             return false;
         }
         sent += to_send;
@@ -126,52 +123,32 @@ bool agent_ipc_send(uint8_t type, const unsigned char* data, uint32_t length)
     return true;
 }
 
-bool agent_ipc_send_screenshot()
-{
-    if (gSdlRenderer == nullptr) {
-        debug_printf("No renderer available for sending screenshot\n");
-        return false;
-    };
-
-    if (SDL_RenderReadPixels(
-        gSdlRenderer, 
-        NULL, 
-        SDL_PIXELFORMAT_RGB888, 
-        gScreenshotBuf + (sizeof(uint16_t) * 2), 
-        gSdlTextureSurface->pitch) < 0) {
-
-        debug_printf("Failed to read pixels from renderer: %s\n", SDL_GetError());
-        return false;
-    }
-
-    SDLNet_Write16(screenGetWidth(), gScreenshotBuf);
-    SDLNet_Write16(screenGetHeight(), gScreenshotBuf + sizeof(uint16_t));
-
-    return agent_ipc_send(MSG_SCREENSHOT, gScreenshotBuf, gScreenshotSize);
-}
-
 void agent_ipc_poll()
 {
     if (!agent_ipc_connected()) {
         return;
     }
 
-    int ready = SDLNet_CheckSockets(gICPSocketSet, 0);
+    agent_commands_update();
+
+    int ready = SDLNet_CheckSockets(ICPSocketSet, 0);
     if (ready <= 0) {
         return;
     }
 
-    char buf[DATA_BUFFER_SIZE];
+    unsigned char buf[DATA_BUFFER_SIZE];
 
-    if (gAgentClient && SDLNet_SocketReady(gAgentClient)) {
-        int len = SDLNet_TCP_Recv(gAgentClient, buf, sizeof(buf) - 1);
-        if (len > 0) {
-            buf[len] = '\0';
-            debug_printf("Received IPC message from agent: %s\n", buf);
+    if (agentClient && SDLNet_SocketReady(agentClient)) {
+        int recvLen = SDLNet_TCP_Recv(agentClient, buf, sizeof(buf) - 1);
+        if (recvLen > 0) {
+            buf[recvLen] = '\0';
 
-            if (strcmp(buf, "next") == 0) {
-                agent_ipc_send_screenshot();
-            }
+            uint8_t msgType = buf[0];
+            uint32_t msgLength = SDLNet_Read32(buf + 1);
+
+            debug_printf("Received IPC message from agent: type 0x%02x, %u byte(s)\n", msgType, msgLength);
+
+            agent_handle_command(msgType, msgLength, buf + 5);
         } else {
             debug_printf("Agent disconnected\n");
             agent_ipc_shutdown();
@@ -181,7 +158,7 @@ void agent_ipc_poll()
 
 bool agent_ipc_connected() 
 {
-    return gAgentClient != nullptr;
+    return agentClient != nullptr;
 }
 
 } // namespace fallout

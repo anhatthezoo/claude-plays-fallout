@@ -1,12 +1,10 @@
 from anthropic import Anthropic
 
-SYSTEM_PROMPT = """You are playing Fallout 1. You can see the game screen and control the game by executing emulator commands.
+SYSTEM_PROMPT = """You are playing Fallout 1. You can see the game screen and control the game using categorized commands/tools.
 
-Your goal is to play through Fallout 1 and eventually save your vault. Make decisions based on what you see on the screen.
+Before each action, explain your reasoning briefly, then use the tools to execute your chosen commands.
 
-Before each action, explain your reasoning briefly, then use the emulator tool to execute your chosen commands.
-
-The conversation history may occasionally be summarized to save context space. If you see a message labeled "CONVERSATION HISTORY SUMMARY", this contains the key information about your progress so far. Use this information to maintain continuity in your gameplay."""
+The conversation history may occasionally be summarized to save context space. If you see a message labeled "CONVERSATION HISTORY SUMMARY", this contains the key information about your progress so far."""
 
 SUMMARY_PROMPT = """I need you to create a detailed summary of our conversation history up to this point. This summary will replace the full conversation history to manage the context window.
 

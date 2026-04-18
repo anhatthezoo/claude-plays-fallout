@@ -272,6 +272,14 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/plib/gnw/touch.h"
     "src/agent/agent_ipc.cc"
     "src/agent/agent_ipc.h"
+    "src/agent/agent_commands.cc"
+    "src/agent/agent_commands.h"
+    "src/agent/commands/command_navigate.cc"
+    "src/agent/commands/command_navigate.h"
+    "src/agent/commands/command_combat.cc"
+    "src/agent/commands/command_combat.h"
+    "src/agent/commands/command_inventory.cc"
+    "src/agent/commands/command_inventory.h"
 )
 
 if(IOS)
