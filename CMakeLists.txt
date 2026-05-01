@@ -280,6 +280,14 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/agent/commands/command_combat.h"
     "src/agent/commands/command_inventory.cc"
     "src/agent/commands/command_inventory.h"
+    "src/agent/commands/command_input.cc"
+    "src/agent/commands/command_input.h"
+    "src/agent/commands/command_item.cc"
+    "src/agent/commands/command_item.h"
+    "src/agent/commands/command_save.cc"
+    "src/agent/commands/command_save.h"
+    "src/agent/agent_movie.cc"
+    "src/agent/agent_movie.h"
 )
 
 if(IOS)

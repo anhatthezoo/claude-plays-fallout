@@ -3,7 +3,6 @@ import socket
 import struct
 
 from enum import Enum
-from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +16,12 @@ class MessageType(Enum):
     MSG_COMBAT = 0x11
     MSG_INVENTORY = 0x12
     MSG_BARTER = 0x13
-    MSG_DIALOGUE = 0x14
-    MSG_INTERACT = 0x15
-    MSG_ITEM = 0x16
-    MSG_LOOT = 0x17
-    MSG_PIPBOY = 0x18
-    MSG_LEFT_CLICK = 0x19
-    MSG_REQ_STATE = 0x1A
+    MSG_ITEM = 0x14
+    MSG_LOOT = 0x15
+    MSG_REQ_STATE = 0x16
+    MSG_SAVE = 0x17
+    MSG_MOUSE = 0x18
+    MSG_TEXT_INPUT = 0x19
 
 class GameIPC:
     def __init__(self):
@@ -38,6 +36,19 @@ class GameIPC:
         header = struct.pack("!BI", msg_type.value, len(payload))
         self._sock.sendall(header + payload)
 
+    def recv_response_raw(self) -> list[tuple[MessageType, bytes]]:
+        response = []
+        while True:
+            msg_type, payload = self._recv_msg()
+            if msg_type == MessageType.MSG_RESPONSE_END:
+                return response
+            response.append((msg_type, payload))
+
+    def close(self):
+        if self._sock:
+            self._sock.close()
+            self._sock = None
+
     def _recv_exact(self, n: int) -> bytes:
         buf = bytearray()
         while len(buf) < n:
@@ -47,23 +58,9 @@ class GameIPC:
             buf.extend(chunk)
         return bytes(buf)
 
-    def recv_msg(self) -> tuple[MessageType, bytes]:
+    def _recv_msg(self) -> tuple[MessageType, bytes]:
         header = self._recv_exact(5)
         msg_type = MessageType(header[0])
         length = struct.unpack('!I', header[1:5])[0]
-        payload = self._recv_exact(length)
+        payload = self._recv_exact(length) if length > 0 else b""
         return (msg_type, payload)
-
-    def recv_screenshot(self) -> Image.Image:
-        msg_type, payload = self.recv_msg()
-        if msg_type != MessageType.MSG_SCREENSHOT:
-            raise RuntimeError(f"Expected screenshot, got {msg_type}")
-
-        w, h = struct.unpack('!II', payload[:8])
-        pixel_data = payload[8:]
-
-        expected = w * h * 4
-        if len(pixel_data) != expected:
-            raise RuntimeError(f"Screenshot size mismatch: expected {expected}, got {len(pixel_data)}")
-
-        return Image.frombytes("RGB", (w, h), pixel_data, "raw", "BGRX")

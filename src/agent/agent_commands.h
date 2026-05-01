@@ -23,6 +23,8 @@ bool agent_response_is_pending();
 
 bool agent_get_mouse_state(MouseData* mouseData);
 
+void agent_send_text(const char* text);
+
 } // namespace fallout
 
 

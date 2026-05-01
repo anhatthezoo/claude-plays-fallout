@@ -1213,14 +1213,27 @@ void agent_process_key(KeyboardData* data)
     GNW95_process_key(data);
 }
 
-void agent_simulate_key(int scancode)
+void agent_simulate_key(int scancode, bool uppercase)
 {
     KeyboardData keyboardData;
+
+    if (uppercase) {
+        keyboardData.key = SDL_SCANCODE_LSHIFT;
+        keyboardData.down = true;
+        GNW95_process_key(&keyboardData);
+    }
+
     keyboardData.key = scancode;
     keyboardData.down = true;
     GNW95_process_key(&keyboardData);
     keyboardData.down = false;
     GNW95_process_key(&keyboardData);
+
+    if (uppercase) {
+        keyboardData.key = SDL_SCANCODE_LSHIFT;
+        keyboardData.down = false;
+        GNW95_process_key(&keyboardData);
+    }
 }
 
 // 0x4B4734

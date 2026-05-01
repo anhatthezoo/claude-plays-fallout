@@ -67,23 +67,37 @@ class CommandManager:
         code = action_map[action]
         self._ipc.send(MessageType.MSG_BARTER, struct.pack("!BII", code, item, quantity))
 
-    def left_click(self, x: int, y: int):
-        self._ipc.send(MessageType.MSG_LEFT_CLICK, struct.pack("!II", x, y))
+    def mouse(self, action: str, x: int = 0, y: int = 0):
+        action_map = {"click": 0, "context_menu": 1, "context_select": 2}
+        code = action_map[action]
+        self._ipc.send(MessageType.MSG_MOUSE, struct.pack("!BII", code, x, y))
+
+    def item(self, action: str):
+        action_map = {"change_hand": 0, "change_mode": 1}
+        code = action_map[action]
+        self._ipc.send(MessageType.MSG_ITEM, struct.pack("!B", code))
+
+    def save(self, action: str):
+        action_map = {"save": 0, "load": 1, "quick_save": 2, "quick_load": 3}
+        code = action_map[action]
+        self._ipc.send(MessageType.MSG_SAVE, struct.pack("!B", code))
+
+    def text_input(self, text: str):
+        encoded = text.encode("utf-8")
+        self._ipc.send(MessageType.MSG_TEXT_INPUT, struct.pack("!I", len(encoded)) + encoded + b"\x00")
 
     def request_state(self):
         self._ipc.send(MessageType.MSG_REQ_STATE)
 
     def recv_response(self) -> GameResponse:
+        raw_messages = self._ipc.recv_response_raw()
+
         messages = []
         screenshot = None
         state = None
 
-        while True:
-            msg_type, payload = self._ipc.recv_msg()
-
-            if msg_type == MessageType.MSG_RESPONSE_END:
-                break
-            elif msg_type == MessageType.MSG_GENERAL:
+        for msg_type, payload in raw_messages:
+            if msg_type == MessageType.MSG_GENERAL:
                 messages.append(payload.decode("utf-8"))
             elif msg_type == MessageType.MSG_SCREENSHOT:
                 w, h = struct.unpack('!II', payload[:8])
@@ -94,3 +108,4 @@ class CommandManager:
                 state = GameState(hp=hp, max_hp=max_hp, ap=ap, max_ap=max_ap, ac=ac, level=level)
 
         return GameResponse(messages=messages, screenshot=screenshot, state=state)
+

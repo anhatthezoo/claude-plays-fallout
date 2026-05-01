@@ -17,13 +17,12 @@ enum AgentMessageType : uint8_t {
     MSG_COMBAT = 0x11,
     MSG_INVENTORY = 0x12,
     MSG_BARTER = 0x13,
-    MSG_DIALOGUE = 0x14,
-    MSG_INTERACT = 0x15,
-    MSG_ITEM = 0x16,
-    MSG_LOOT = 0x17,
-    MSG_PIPBOY = 0x18,
-    MSG_LEFT_CLICK = 0x19,
-    MSG_REQ_STATE = 0x1A,
+    MSG_ITEM = 0x14,
+    MSG_LOOT = 0x15,
+    MSG_REQ_STATE = 0x16,
+    MSG_SAVE = 0x17,
+    MSG_MOUSE = 0x18,
+    MSG_TEXT_INPUT = 0x19,
 };
 
 // Initialize the agent IPC: starts a TCP server on localhost and waits up

@@ -44,7 +44,9 @@
 #include "plib/gnw/intrface.h"
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
+#include "agent/agent_commands.h"
 #include "agent/agent_ipc.h"
+#include "agent/agent_movie.h"
 
 namespace fallout {
 
@@ -98,7 +100,12 @@ int gnw_main(int argc, char** argv)
     }
 
     gmovie_play(MOVIE_IPLOGO, GAME_MOVIE_FADE_IN);
+
     gmovie_play(MOVIE_INTRO, 0);
+
+    if (agent_ipc_connected()) {
+        agent_send_movie_summary(MOVIE_INTRO);
+    }
 
     if (main_menu_create() == 0) {
         int language_filter = 1;
@@ -125,6 +132,11 @@ int gnw_main(int argc, char** argv)
                 main_menu_destroy();
                 if (select_character() == 2) {
                     gmovie_play(MOVIE_OVRINTRO, GAME_MOVIE_STOP_MUSIC);
+
+                    if (agent_ipc_connected()) {
+                        agent_send_movie_summary(MOVIE_OVRINTRO);
+                    }
+
                     roll_set_seed(-1);
                     main_load_new(mainMap);
                     main_game_loop();
